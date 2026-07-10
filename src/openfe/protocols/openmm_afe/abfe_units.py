@@ -619,11 +619,55 @@ class ABFEComplexSetupUnit(
             rest_geom,
         )
 
+        # Remove the thermostat, otherwise you'll get an
+        # Andersen thermostat by default!
+        restrained_system = thermodynamic_state.get_system(remove_thermostat=True)
+
+        # Restrain the alchemical ion to the ligand, analogous to the solvent
+        # leg (ABFESolventSetupUnit._add_restraints)
+        if alchemical_ions is not None:
+            if len(alchemical_ions) > 1:
+                errmsg = "Currently cannot handle more than one alchemical ion"
+                raise ValueError(errmsg)
+
+            if self.verbose:
+                self.logger.info("Generating restraints for alchemical ions")
+
+            # ligand central atom <-> ion: the same reference pair as the solvent leg
+            alchem_ion_ag = univ.atoms[alchemical_ions]
+            ligand_central_atom = guest_atom_ids[get_central_atom_idx(guest_rdmol)]
+            ligand_central_atom_ag = univ.atoms[ligand_central_atom]
+
+            # Get the ligand-ion distance based on the final frame
+            univ.trajectory[-1]
+
+            distance = float(
+                calc_bonds(
+                    alchem_ion_ag.atoms[0].position,
+                    ligand_central_atom_ag.position,
+                    box=univ.dimensions,
+                )
+            )
+
+            spring_constant = to_openmm(
+                settings["alchemical_settings"].alchemical_ion_solvent_spring_constant
+            )
+
+            force = HarmonicBondForce()
+
+            force.addBond(
+                ligand_central_atom,
+                alchemical_ions[0],
+                distance * ommunit.angstrom,
+                spring_constant,
+            )
+
+            force.setName("ion_restraint_complex")
+            add_force_in_separate_group(restrained_system, force)
+
         return (
             correction,
-            # Remove the thermostat, otherwise you'll get an
-            # Andersen thermostat by default!
-            thermodynamic_state.get_system(remove_thermostat=True),
+            restrained_system,
             rest_geom,
         )
 
