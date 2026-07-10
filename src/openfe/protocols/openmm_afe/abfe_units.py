@@ -839,7 +839,7 @@ class ABFESolventSetupUnit(
 
         force.setName("ion_restraint")
         # TODO: Temporarily disabled this for testing
-        # add_force_in_separate_group(restrained_system, force)
+        add_force_in_separate_group(restrained_system, force)
 
         return None, restrained_system, None
 
