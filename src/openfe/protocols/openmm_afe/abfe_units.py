@@ -663,6 +663,7 @@ class ABFEComplexSetupUnit(
             )
 
             force.setName("ion_restraint_complex")
+            force.setUsesPeriodicBoundaryConditions(True)
             add_force_in_separate_group(restrained_system, force)
 
         return (
@@ -882,7 +883,7 @@ class ABFESolventSetupUnit(
         )
 
         force.setName("ion_restraint")
-        # TODO: Temporarily disabled this for testing
+        force.setUsesPeriodicBoundaryConditions(True)
         add_force_in_separate_group(restrained_system, force)
 
         return None, restrained_system, None
