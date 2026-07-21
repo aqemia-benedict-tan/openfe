@@ -18,7 +18,6 @@ from gufe import (
     SolventComponent,
 )
 from gufe.components import Component, SolvatedPDBComponent
-from MDAnalysis.lib.distances import calc_bonds
 from openff.units import Quantity
 from openff.units import unit as offunit
 from openff.units.openmm import to_openmm
@@ -634,20 +633,23 @@ class ABFEComplexSetupUnit(
                 self.logger.info("Generating restraints for alchemical ions")
 
             # ligand central atom <-> ion: the same reference pair as the solvent leg
-            alchem_ion_ag = univ.atoms[alchemical_ions]
             ligand_central_atom = guest_atom_ids[get_central_atom_idx(guest_rdmol)]
-            ligand_central_atom_ag = univ.atoms[ligand_central_atom]
 
-            # Get the ligand-ion distance based on the final frame
-            univ.trajectory[-1]
-
-            distance = float(
-                calc_bonds(
-                    alchem_ion_ag.atoms[0].position,
-                    ligand_central_atom_ag.position,
-                    box=univ.dimensions,
-                )
-            )
+            # Tether length (r0): place the ion as far from the ligand as the box
+            # allows -- r0 = half the box min-image width minus a safety buffer --
+            # rather than measuring the ion-ligand distance, which the ion drifts
+            # onto the oppositely-charged ligand during the non-alchemical
+            # pre-equilibration (pinning it in contact). r0 must stay below
+            # half-box or the periodic bond can't reach equilibrium; the buffer
+            # covers thermal/barostat box fluctuations.
+            univ.trajectory[-1]  # box from the last frame
+            box = univ.dimensions
+            if box is None or np.all(np.isinf(box)) or np.any(box[:3] <= 0.0):
+                r0 = 1.5 * offunit.nanometer  # dry run: no trajectory box
+            else:
+                r0 = (_get_minimum_image_distance(box) * 0.5) - settings[
+                    "alchemical_settings"
+                ].alchemical_ion_tether_box_buffer
 
             spring_constant = to_openmm(
                 settings["alchemical_settings"].alchemical_ion_solvent_spring_constant
@@ -658,7 +660,7 @@ class ABFEComplexSetupUnit(
             force.addBond(
                 ligand_central_atom,
                 alchemical_ions[0],
-                distance * ommunit.angstrom,
+                to_openmm(r0),
                 spring_constant,
             )
 
@@ -848,26 +850,27 @@ class ABFESolventSetupUnit(
             self.shared_basepath / settings["equil_output_settings"].production_trajectory_filename,
         )
 
-        # alchemical ion atom atomgroup
-        alchem_ion_ag = universe.atoms[alchemical_ions]
-
         # get the alchemical ligand atoms
         ligand_rdmol = alchem_comps["stateA"][0].to_rdkit()
         residxs = np.concatenate([comp_resids[key] for key in alchem_comps["stateA"]])
         ligand_alchem_idxs = _get_idxs_from_residxs(topology=topology, residxs=residxs)
         ligand_central_atom = ligand_alchem_idxs[get_central_atom_idx(ligand_rdmol)]
-        ligand_central_atom_ag = universe.atoms[ligand_central_atom]
 
-        # Get the ligand-ion distance based on the final frame
-        universe.trajectory[-1]
-
-        distance = float(
-            calc_bonds(
-                alchem_ion_ag.atoms[0].position,
-                ligand_central_atom_ag.position,
-                box=universe.dimensions,
-            )
-        )
+        # Tether length (r0): place the ion as far from the ligand as the box
+        # allows -- r0 = half the box min-image width minus a safety buffer --
+        # rather than measuring the ion-ligand distance, which the ion drifts
+        # onto the oppositely-charged ligand during the non-alchemical
+        # pre-equilibration (pinning it in contact). r0 must stay below half-box
+        # or the periodic bond can't reach equilibrium; the buffer covers
+        # thermal/barostat box fluctuations.
+        universe.trajectory[-1]  # box from the last frame
+        box = universe.dimensions
+        if box is None or np.all(np.isinf(box)) or np.any(box[:3] <= 0.0):
+            r0 = 1.5 * offunit.nanometer  # dry run: no trajectory box
+        else:
+            r0 = (_get_minimum_image_distance(box) * 0.5) - settings[
+                "alchemical_settings"
+            ].alchemical_ion_tether_box_buffer
 
         spring_constant = to_openmm(
             settings["alchemical_settings"].alchemical_ion_solvent_spring_constant
@@ -878,7 +881,7 @@ class ABFESolventSetupUnit(
         force.addBond(
             ligand_central_atom,
             alchemical_ions[0],
-            distance * ommunit.angstrom,
+            to_openmm(r0),
             spring_constant,
         )
 

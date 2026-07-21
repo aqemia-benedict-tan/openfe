@@ -104,6 +104,22 @@ class ABFEAlchemicalSettings(AlchemicalSettings):
     """
     The minimum distance to search for a co-alchemical ion.
     """
+    alchemical_ion_tether_box_buffer: NanometerQuantity = 0.3 * offunit.nanometer
+    """
+    Safety margin subtracted from half the box minimum-image width when setting
+    the harmonic tether's equilibrium distance (r0). r0 is placed as far from the
+    ligand as the periodic box allows, computed per leg from that leg's box:
+
+        r0 = 0.5 * (box minimum-image width) - alchemical_ion_tether_box_buffer
+
+    This keeps the co-alchemical ion in bulk. It replaces auto-sizing r0 from the
+    ion-ligand distance, which pinned the ion in contact: during the
+    non-alchemical pre-equilibration the ion drifts onto the oppositely-charged
+    ligand, so a measured distance can be tiny. r0 must stay below half the box
+    min-image width -- a periodic HarmonicBond with r0 >= half-box cannot reach
+    equilibrium and the integrator diverges -- and this buffer absorbs thermal
+    and barostat box fluctuations.
+    """
     alchemical_ion_solvent_spring_constant: SpringConstantLinearQuantity = (
         1000.0 * offunit.kilojoule_per_mole / offunit.nm**2
     )
